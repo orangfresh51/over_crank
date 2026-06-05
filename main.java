@@ -60,3 +60,65 @@ public final class over_crank {
     public static final int FEE_BASIS_POINTS = 63;
     public static final long BPS_DENOMINATOR = 10_000L;
     public static final long DEFAULT_CHAIN_ID = 1L;
+    public static final String DOMAIN_SEPARATOR = "over_crank_velvet_v3";
+    public static final String DIGEST_ALGORITHM = "SHA-256";
+    public static final long GENESIS_CRANK_OFFSET = 1_847_293_610_284L;
+    public static final int SUPER_PERF_TARGET_FPS = 144;
+    public static final int MIN_ACCEPTABLE_FPS = 58;
+    public static final double CRANK_BOOST_CEILING = 2.847;
+
+    public static final String CRANK_GOVERNOR_HEX = "0x8c4E2a9F1b6D3c7A0e5B8d2F4a6C1e9B3d7F0a2C";
+    public static final String RENDER_ORACLE_HEX = "0x5B9d3F7a1C4e6A8c0E2b5D9f1A3c7E1b4D6f8a0";
+    public static final String TAB_VAULT_HEX = "0x7e3C1a9B5d2F8c6E4a0D7b3F9e1A6c8B2d5F0a4";
+    public static final String WORKER_RELAY_HEX = "0x2a9F6c3E1b8D4f7A0c5E9b2D6a1F8c4E7b0A3d9";
+    public static final String ATTESTATION_KEEPER_HEX = "0xD4f2A9c6E1b8D3f7C0a5E2b9F6c1A8e4B7d0F3a5";
+    public static final String INFERENCE_ROUTER_HEX = "0x6c8B3e9F2a5D1f7A4c0E6b3D8a9F2c5E1b7A0d4";
+    public static final String TELEMETRY_CURATOR_HEX = "0x1f7A9c4E6b2D0a8F5c3E9b1D7f4A2c8E6b0D5a3";
+    public static final String LATTICE_DOMAIN_HEX =
+            "0x9E4b7C2a8F1d6E3c0B5a9D2f7A4c8E1b6D0f3A9c2E5b8D1f4A7c0E3b6D9f2a5";
+
+    private final CrankRuntimeConfig runtimeConfig;
+    private final TabShardRegistry tabShardRegistry;
+    private final RenderBeamLattice renderBeamLattice;
+    private final WorkerCrankPool workerCrankPool;
+    private final InferenceCrankRouter inferenceCrankRouter;
+    private final DomMutationBatcher domMutationBatcher;
+    private final CrankAttestationBridge crankAttestationBridge;
+    private final PerfTelemetryRing perfTelemetryRing;
+    private final CrankLedger crankLedger;
+    private final SuperPerfScorer superPerfScorer;
+    private final CrankAccessGate crankAccessGate;
+    private final CrankReportComposer crankReportComposer;
+    private final AtomicBoolean crankLaneFrozen;
+    private final AtomicLong crankEpoch;
+    private final AtomicReference<Double> liveBoostFactor;
+    private final Instant bootInstant;
+
+    public over_crank(CrankRuntimeConfig runtimeConfig) {
+        this.runtimeConfig = Objects.requireNonNull(runtimeConfig, "runtimeConfig");
+        this.tabShardRegistry = new TabShardRegistry(MAX_TAB_SHARDS);
+        this.renderBeamLattice = new RenderBeamLattice(MAX_RENDER_BEAMS);
+        this.workerCrankPool = new WorkerCrankPool(MAX_WORKER_CRANKS);
+        this.inferenceCrankRouter = new InferenceCrankRouter(MAX_INFERENCE_SLOTS);
+        this.domMutationBatcher = new DomMutationBatcher(MAX_DOM_MUTATION_BATCH);
+        this.crankAttestationBridge = new CrankAttestationBridge(runtimeConfig);
+        this.perfTelemetryRing = new PerfTelemetryRing(MAX_TELEMETRY_RING);
+        this.crankLedger = new CrankLedger();
+        this.superPerfScorer = new SuperPerfScorer();
+        this.crankAccessGate = new CrankAccessGate();
+        this.crankReportComposer = new CrankReportComposer();
+        this.crankLaneFrozen = new AtomicBoolean(false);
+        this.crankEpoch = new AtomicLong(0L);
+        this.liveBoostFactor = new AtomicReference<>(1.0);
+        this.bootInstant = Instant.now();
+    }
+
+    public static over_crank bootstrapDefault() {
+        CrankRuntimeConfig cfg = new CrankRuntimeConfig(
+                DEFAULT_CHAIN_ID,
+                CRANK_GOVERNOR_HEX,
+                RENDER_ORACLE_HEX,
+                TAB_VAULT_HEX,
+                WORKER_RELAY_HEX,
+                ATTESTATION_KEEPER_HEX,
+                INFERENCE_ROUTER_HEX,
