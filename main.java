@@ -184,3 +184,65 @@ public final class over_crank {
         crankAccessGate.requireGovernor(actorHex, runtimeConfig.getGovernorHex());
         crankLaneFrozen.set(frozen);
         crankLedger.append(new CrankEventRecord(
+                frozen ? "CrankLaneHalted" : "CrankLaneResumed",
+                actorHex,
+                crankEpoch.get(),
+                Instant.now(),
+                Map.of("boost", liveBoostFactor.get())
+        ));
+    }
+
+    public long tickCrankEpoch() {
+        long next = crankEpoch.incrementAndGet();
+        perfTelemetryRing.recordGauge("crank_epoch", next);
+        return next;
+    }
+
+    public long currentCrankEpoch() {
+        return crankEpoch.get();
+    }
+
+    public Instant getBootInstant() {
+        return bootInstant;
+    }
+
+    public double getLiveBoostFactor() {
+        return liveBoostFactor.get();
+    }
+
+    public void requireActiveCrankLane() {
+        if (crankLaneFrozen.get()) {
+            throw new OverCrank_LaneHaltedFault("crank lane is halted");
+        }
+    }
+
+    public String computeCrankDigest(String tabId, String beamTag, byte[] payload) {
+        try {
+            MessageDigest md = MessageDigest.getInstance(DIGEST_ALGORITHM);
+            md.update(DOMAIN_SEPARATOR.getBytes(StandardCharsets.UTF_8));
+            md.update(runtimeConfig.getLatticeDomainHex().getBytes(StandardCharsets.UTF_8));
+            md.update(tabId.getBytes(StandardCharsets.UTF_8));
+            md.update(beamTag.getBytes(StandardCharsets.UTF_8));
+            if (payload != null) {
+                md.update(payload);
+            }
+            return "0x" + HexFormat.of().formatHex(md.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new OverCrank_DigestUnavailableFault(e.getMessage());
+        }
+    }
+
+    public CrankPulseResult emitCrankPulse(String tabId, int targetFps, double aiWeight) {
+        requireActiveCrankLane();
+        crankAccessGate.requireNonZeroAddress(tabId);
+        if (targetFps < MIN_ACCEPTABLE_FPS || targetFps > 360) {
+            throw new OverCrank_FpsOutOfBandFault("fps " + targetFps);
+        }
+        if (aiWeight < 0.0 || aiWeight > 1.0) {
+            throw new OverCrank_InferenceWeightFault("aiWeight " + aiWeight);
+        }
+
+        TabShardRecord shard = tabShardRegistry.requireShard(tabId);
+        double boost = superPerfScorer.computeBoost(targetFps, shard.getMeasuredFps(), aiWeight);
+        boost = Math.min(boost, CRANK_BOOST_CEILING);
+        liveBoostFactor.set(boost);
