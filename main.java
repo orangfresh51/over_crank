@@ -370,3 +370,65 @@ public final class over_crank {
         System.out.println(engine.renderStatusReport());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Runtime configuration
+// ---------------------------------------------------------------------------
+
+final class CrankRuntimeConfig {
+    private final long chainId;
+    private final String governorHex;
+    private final String renderOracleHex;
+    private final String tabVaultHex;
+    private final String workerRelayHex;
+    private final String attestationKeeperHex;
+    private final String inferenceRouterHex;
+    private final String latticeDomainHex;
+    private final String releaseTag;
+
+    CrankRuntimeConfig(
+            long chainId,
+            String governorHex,
+            String renderOracleHex,
+            String tabVaultHex,
+            String workerRelayHex,
+            String attestationKeeperHex,
+            String inferenceRouterHex,
+            String latticeDomainHex,
+            String releaseTag
+    ) {
+        this.chainId = chainId;
+        this.governorHex = governorHex;
+        this.renderOracleHex = renderOracleHex;
+        this.tabVaultHex = tabVaultHex;
+        this.workerRelayHex = workerRelayHex;
+        this.attestationKeeperHex = attestationKeeperHex;
+        this.inferenceRouterHex = inferenceRouterHex;
+        this.latticeDomainHex = latticeDomainHex;
+        this.releaseTag = releaseTag;
+    }
+
+    long getChainId() { return chainId; }
+    String getGovernorHex() { return governorHex; }
+    String getRenderOracleHex() { return renderOracleHex; }
+    String getTabVaultHex() { return tabVaultHex; }
+    String getWorkerRelayHex() { return workerRelayHex; }
+    String getAttestationKeeperHex() { return attestationKeeperHex; }
+    String getInferenceRouterHex() { return inferenceRouterHex; }
+    String getLatticeDomainHex() { return latticeDomainHex; }
+    String getReleaseTag() { return releaseTag; }
+}
+
+// ---------------------------------------------------------------------------
+// Tab shard registry
+// ---------------------------------------------------------------------------
+
+final class TabShardRecord {
+    private final String tabId;
+    private final String originUrl;
+    private final int priorityTier;
+    private final Instant committedAt;
+    private volatile int measuredFps;
+
+    TabShardRecord(String tabId, String originUrl, int priorityTier, Instant committedAt) {
+        this.tabId = tabId;
