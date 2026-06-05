@@ -308,3 +308,65 @@ public final class over_crank {
         perfTelemetryRing.recordCounter("dom_mutations", mutationTags.size());
     }
 
+    public void recordMeasuredFps(String tabId, int measuredFps) {
+        if (measuredFps < 0 || measuredFps > 1000) {
+            throw new OverCrank_FpsOutOfBandFault("measured " + measuredFps);
+        }
+        tabShardRegistry.updateMeasuredFps(tabId, measuredFps);
+        superPerfScorer.ingestSample(tabId, measuredFps);
+    }
+
+    public String forgeAttestation(String tabId) {
+        requireActiveCrankLane();
+        TabShardRecord shard = tabShardRegistry.requireShard(tabId);
+        return crankAttestationBridge.forge(
+                tabId,
+                shard.getMeasuredFps(),
+                liveBoostFactor.get(),
+                crankEpoch.get()
+        );
+    }
+
+    public boolean verifyAttestation(String tabId, String attestationHex, String signerHex) {
+        return crankAttestationBridge.verify(tabId, attestationHex, signerHex);
+    }
+
+    public String renderStatusReport() {
+        return crankReportComposer.compose(
+                this,
+                crankEpoch.get(),
+                tabShardRegistry.snapshot(),
+                renderBeamLattice.snapshot(),
+                perfTelemetryRing.snapshot()
+        );
+    }
+
+    public static void main(String[] args) {
+        over_crank engine = over_crank.bootstrapDefault();
+        System.out.println("[" + ENGINE_LABEL + "] boot " + RELEASE_TAG);
+        System.out.println("Governor: " + CRANK_GOVERNOR_HEX);
+
+        engine.commitTabShard("tab-velvet-7a3f", "https://render-lattice.example/app", 3);
+        engine.commitTabShard("tab-crank-9d2e", "https://inference-crank.example/dashboard", 5);
+        engine.commitTabShard("tab-beam-4c8b", "https://super-perf.example/analytics", 2);
+
+        engine.recordMeasuredFps("tab-velvet-7a3f", 72);
+        engine.recordMeasuredFps("tab-crank-9d2e", 61);
+        engine.recordMeasuredFps("tab-beam-4c8b", 118);
+
+        for (int i = 0; i < 12; i++) {
+            engine.tickCrankEpoch();
+            String tab = i % 3 == 0 ? "tab-velvet-7a3f" : (i % 3 == 1 ? "tab-crank-9d2e" : "tab-beam-4c8b");
+            CrankPulseResult pulse = engine.emitCrankPulse(tab, SUPER_PERF_TARGET_FPS, 0.35 + (i * 0.04));
+            engine.ingestDomMutations(tab, List.of("mut-" + i + "-a", "mut-" + i + "-b"));
+            if (i % 4 == 0) {
+                engine.anchorRenderBeam(pulse.beamId(), RENDER_ORACLE_HEX);
+            }
+        }
+
+        String attestation = engine.forgeAttestation("tab-beam-4c8b");
+        boolean ok = engine.verifyAttestation("tab-beam-4c8b", attestation, ATTESTATION_KEEPER_HEX);
+        System.out.println("Attestation ok: " + ok);
+        System.out.println(engine.renderStatusReport());
+    }
+}
