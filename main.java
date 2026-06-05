@@ -122,3 +122,65 @@ public final class over_crank {
                 WORKER_RELAY_HEX,
                 ATTESTATION_KEEPER_HEX,
                 INFERENCE_ROUTER_HEX,
+                LATTICE_DOMAIN_HEX,
+                RELEASE_TAG
+        );
+        return new over_crank(cfg);
+    }
+
+    public CrankRuntimeConfig getRuntimeConfig() {
+        return runtimeConfig;
+    }
+
+    public TabShardRegistry tabs() {
+        return tabShardRegistry;
+    }
+
+    public RenderBeamLattice beams() {
+        return renderBeamLattice;
+    }
+
+    public WorkerCrankPool workers() {
+        return workerCrankPool;
+    }
+
+    public InferenceCrankRouter inference() {
+        return inferenceCrankRouter;
+    }
+
+    public DomMutationBatcher domBatch() {
+        return domMutationBatcher;
+    }
+
+    public CrankAttestationBridge attestation() {
+        return crankAttestationBridge;
+    }
+
+    public PerfTelemetryRing telemetry() {
+        return perfTelemetryRing;
+    }
+
+    public CrankLedger ledger() {
+        return crankLedger;
+    }
+
+    public SuperPerfScorer scorer() {
+        return superPerfScorer;
+    }
+
+    public CrankAccessGate access() {
+        return crankAccessGate;
+    }
+
+    public CrankReportComposer reports() {
+        return crankReportComposer;
+    }
+
+    public boolean isCrankLaneFrozen() {
+        return crankLaneFrozen.get();
+    }
+
+    public void setCrankLaneFrozen(boolean frozen, String actorHex) {
+        crankAccessGate.requireGovernor(actorHex, runtimeConfig.getGovernorHex());
+        crankLaneFrozen.set(frozen);
+        crankLedger.append(new CrankEventRecord(
