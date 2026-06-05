@@ -246,3 +246,65 @@ public final class over_crank {
         double boost = superPerfScorer.computeBoost(targetFps, shard.getMeasuredFps(), aiWeight);
         boost = Math.min(boost, CRANK_BOOST_CEILING);
         liveBoostFactor.set(boost);
+
+        RenderBeamRecord beam = renderBeamLattice.allocateBeam(tabId, targetFps, boost);
+        workerCrankPool.assignCrank(beam.getBeamId(), boost);
+        inferenceCrankRouter.routeSlot(tabId, aiWeight);
+
+        CrankPulseResult result = new CrankPulseResult(
+                tabId,
+                beam.getBeamId(),
+                boost,
+                targetFps,
+                crankEpoch.get(),
+                computeCrankDigest(tabId, beam.getBeamTag(), null)
+        );
+
+        crankLedger.append(new CrankEventRecord(
+                "CrankPulseEmitted",
+                runtimeConfig.getGovernorHex(),
+                crankEpoch.get(),
+                Instant.now(),
+                Map.of("tab", tabId, "beam", beam.getBeamId(), "boost", boost)
+        ));
+        perfTelemetryRing.recordPulse(result);
+        return result;
+    }
+
+    public void commitTabShard(String tabId, String originUrl, int priorityTier) {
+        requireActiveCrankLane();
+        crankAccessGate.requireNonZeroAddress(tabId);
+        crankAccessGate.requireValidUrl(originUrl);
+        if (priorityTier < 0 || priorityTier > 7) {
+            throw new OverCrank_PriorityTierFault("tier " + priorityTier);
+        }
+        tabShardRegistry.commitShard(tabId, originUrl, priorityTier);
+        crankLedger.append(new CrankEventRecord(
+                "TabShardCommitted",
+                TAB_VAULT_HEX,
+                crankEpoch.get(),
+                Instant.now(),
+                Map.of("tab", tabId, "tier", priorityTier)
+        ));
+    }
+
+    public void anchorRenderBeam(String beamId, String actorHex) {
+        requireActiveCrankLane();
+        crankAccessGate.requireOracle(actorHex, runtimeConfig.getRenderOracleHex());
+        RenderBeamRecord beam = renderBeamLattice.requireBeam(beamId);
+        renderBeamLattice.anchorBeam(beamId);
+        crankLedger.append(new CrankEventRecord(
+                "RenderBeamAnchored",
+                actorHex,
+                crankEpoch.get(),
+                Instant.now(),
+                Map.of("beam", beamId, "tab", beam.getTabId())
+        ));
+    }
+
+    public void ingestDomMutations(String tabId, List<String> mutationTags) {
+        requireActiveCrankLane();
+        domMutationBatcher.ingest(tabId, mutationTags);
+        perfTelemetryRing.recordCounter("dom_mutations", mutationTags.size());
+    }
+
