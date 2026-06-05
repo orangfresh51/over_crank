@@ -432,3 +432,65 @@ final class TabShardRecord {
 
     TabShardRecord(String tabId, String originUrl, int priorityTier, Instant committedAt) {
         this.tabId = tabId;
+        this.originUrl = originUrl;
+        this.priorityTier = priorityTier;
+        this.committedAt = committedAt;
+        this.measuredFps = 0;
+    }
+
+    String getTabId() { return tabId; }
+    String getOriginUrl() { return originUrl; }
+    int getPriorityTier() { return priorityTier; }
+    Instant getCommittedAt() { return committedAt; }
+    int getMeasuredFps() { return measuredFps; }
+    void setMeasuredFps(int fps) { this.measuredFps = fps; }
+}
+
+final class TabShardRegistry {
+    private final int maxShards;
+    private final Map<String, TabShardRecord> shards = new ConcurrentHashMap<>();
+
+    TabShardRegistry(int maxShards) {
+        this.maxShards = maxShards;
+    }
+
+    void commitShard(String tabId, String originUrl, int priorityTier) {
+        if (shards.containsKey(tabId)) {
+            throw new OverCrank_TabShardDuplicateFault(tabId);
+        }
+        if (shards.size() >= maxShards) {
+            throw new OverCrank_TabSaturationFault("max " + maxShards);
+        }
+        shards.put(tabId, new TabShardRecord(tabId, originUrl, priorityTier, Instant.now()));
+    }
+
+    TabShardRecord requireShard(String tabId) {
+        TabShardRecord r = shards.get(tabId);
+        if (r == null) {
+            throw new OverCrank_TabShardMissingFault(tabId);
+        }
+        return r;
+    }
+
+    void updateMeasuredFps(String tabId, int fps) {
+        requireShard(tabId).setMeasuredFps(fps);
+    }
+
+    List<TabShardRecord> snapshot() {
+        return new ArrayList<>(shards.values());
+    }
+
+    int size() { return shards.size(); }
+}
+
+// ---------------------------------------------------------------------------
+// Render beam lattice
+// ---------------------------------------------------------------------------
+
+final class RenderBeamRecord {
+    private final String beamId;
+    private final String tabId;
+    private final String beamTag;
+    private final int targetFps;
+    private final double boostFactor;
+    private final Instant createdAt;
