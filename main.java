@@ -1238,3 +1238,65 @@ final class CrankDeployArtifact {
         root.put("tabVault", over_crank.TAB_VAULT_HEX);
         root.put("workerRelay", over_crank.WORKER_RELAY_HEX);
         root.put("attestationKeeper", over_crank.ATTESTATION_KEEPER_HEX);
+        root.put("inferenceRouter", over_crank.INFERENCE_ROUTER_HEX);
+        root.put("latticeDomain", over_crank.LATTICE_DOMAIN_HEX);
+        root.put("genesisOffset", over_crank.GENESIS_CRANK_OFFSET);
+        root.put("maxTabShards", over_crank.MAX_TAB_SHARDS);
+        root.put("maxRenderBeams", over_crank.MAX_RENDER_BEAMS);
+        root.put("superPerfTargetFps", over_crank.SUPER_PERF_TARGET_FPS);
+        return toJson(root);
+    }
+
+    private static String toJson(Map<String, Object> map) {
+        return map.entrySet().stream()
+                .map(e -> "\"" + e.getKey() + "\":" + jsonValue(e.getValue()))
+                .collect(Collectors.joining(",", "{", "}"));
+    }
+
+    private static String jsonValue(Object v) {
+        if (v instanceof String s) return "\"" + s + "\"";
+        if (v instanceof Number) return v.toString();
+        return "\"" + String.valueOf(v) + "\"";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Interactive REPL (stdin only, bounded)
+// ---------------------------------------------------------------------------
+
+final class CrankInteractiveShell {
+    private final over_crank engine;
+    private final CrankOrchestrator orchestrator;
+    private final AtomicBoolean running = new AtomicBoolean(true);
+
+    CrankInteractiveShell(over_crank engine) {
+        this.engine = engine;
+        this.orchestrator = new CrankOrchestrator(engine);
+    }
+
+    void runLoop() throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        System.out.println("over_crank shell — commands: status, pulse <tab> <fps> <weight>, quit");
+        while (running.get()) {
+            System.out.print("crank> ");
+            String line = reader.readLine();
+            if (line == null || line.isBlank()) continue;
+            String[] parts = line.trim().split("\\s+");
+            String cmd = parts[0].toLowerCase(Locale.ROOT);
+            switch (cmd) {
+                case "quit", "exit" -> running.set(false);
+                case "status" -> System.out.println(engine.renderStatusReport());
+                case "pulse" -> handlePulse(parts);
+                case "deploy" -> System.out.println(CrankDeployArtifact.build(engine));
+                case "diag" -> System.out.println(orchestrator.diagnostics());
+                default -> System.out.println("unknown: " + cmd);
+            }
+        }
+    }
+
+    private void handlePulse(String[] parts) {
+        if (parts.length < 4) {
+            System.out.println("usage: pulse <tab> <fps> <weight>");
+            return;
+        }
+        try {
