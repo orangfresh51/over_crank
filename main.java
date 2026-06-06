@@ -1424,3 +1424,65 @@ final class TabAnalyticsEngine {
     }
 
     Map<String, Map<String, Double>> export() {
+        Map<String, Map<String, Double>> out = new LinkedHashMap<>();
+        rollingStats.forEach((tab, arr) -> {
+            Map<String, Double> m = new LinkedHashMap<>();
+            m.put("ema_fps", arr[0]);
+            m.put("peak_fps", arr[1]);
+            m.put("ema_boost", arr[2]);
+            m.put("samples", arr[3]);
+            out.put(tab, m);
+        });
+        return out;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Worker crank health monitor
+// ---------------------------------------------------------------------------
+
+final class WorkerHealthMonitor {
+    private final Map<String, Integer> stallCounts = new ConcurrentHashMap<>();
+
+    void reportStall(String workerId) {
+        stallCounts.merge(workerId, 1, Integer::sum);
+    }
+
+    void clearStall(String workerId) {
+        stallCounts.remove(workerId);
+    }
+
+    List<String> unhealthyWorkers(int threshold) {
+        return stallCounts.entrySet().stream()
+                .filter(e -> e.getValue() >= threshold)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Crank epoch snapshot store
+// ---------------------------------------------------------------------------
+
+final class EpochSnapshotStore {
+    private final Map<Long, byte[]> snapshots = new ConcurrentHashMap<>();
+    private static final int MAX_SNAPSHOTS = 512;
+
+    void store(long epoch, byte[] digest) {
+        snapshots.put(epoch, Arrays.copyOf(digest, digest.length));
+        if (snapshots.size() > MAX_SNAPSHOTS) {
+            Long min = snapshots.keySet().stream().min(Long::compare).orElse(null);
+            if (min != null) snapshots.remove(min);
+        }
+    }
+
+    Optional<byte[]> load(long epoch) {
+        byte[] b = snapshots.get(epoch);
+        return b == null ? Optional.empty() : Optional.of(Arrays.copyOf(b, b.length));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lane color palette for render prioritization
+// ---------------------------------------------------------------------------
+
