@@ -1300,3 +1300,65 @@ final class CrankInteractiveShell {
             return;
         }
         try {
+            String tab = parts[1];
+            int fps = Integer.parseInt(parts[2]);
+            double w = Double.parseDouble(parts[3]);
+            orchestrator.orchestratePulse(tab, fps, w, "https://render-lattice.example/app");
+            System.out.println("pulse ok");
+        } catch (Exception e) {
+            System.out.println("error: " + e.getMessage());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Batch crank runner
+// ---------------------------------------------------------------------------
+
+final class CrankBatchRunner {
+
+    static void runWarmup(over_crank engine, int rounds) {
+        CrankOrchestrator orch = new CrankOrchestrator(engine);
+        String[] tabs = {"tab-velvet-7a3f", "tab-crank-9d2e", "tab-beam-4c8b"};
+        for (int i = 0; i < rounds; i++) {
+            String tab = tabs[i % tabs.length];
+            engine.tickCrankEpoch();
+            orch.orchestratePulse(tab, 120 + (i % 24), 0.2 + (i % 5) * 0.1, "https://super-perf.example/analytics");
+            if (i % 3 == 0) orch.flushScheduled();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fault types (unique to over_crank)
+// ---------------------------------------------------------------------------
+
+class OverCrank_Fault extends RuntimeException {
+    OverCrank_Fault(String msg) { super(msg); }
+}
+
+final class OverCrank_LaneHaltedFault extends OverCrank_Fault {
+    OverCrank_LaneHaltedFault(String msg) { super(msg); }
+}
+
+final class OverCrank_DigestUnavailableFault extends OverCrank_Fault {
+    OverCrank_DigestUnavailableFault(String msg) { super(msg); }
+}
+
+final class OverCrank_FpsOutOfBandFault extends OverCrank_Fault {
+    OverCrank_FpsOutOfBandFault(String msg) { super(msg); }
+}
+
+final class OverCrank_InferenceWeightFault extends OverCrank_Fault {
+    OverCrank_InferenceWeightFault(String msg) { super(msg); }
+}
+
+final class OverCrank_PriorityTierFault extends OverCrank_Fault {
+    OverCrank_PriorityTierFault(String msg) { super(msg); }
+}
+
+final class OverCrank_TabShardDuplicateFault extends OverCrank_Fault {
+    OverCrank_TabShardDuplicateFault(String tab) { super("duplicate tab " + tab); }
+}
+
+final class OverCrank_TabSaturationFault extends OverCrank_Fault {
