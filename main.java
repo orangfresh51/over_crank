@@ -1176,3 +1176,65 @@ final class CrankOrchestrator {
     private final CrankFeeEstimator feeEstimator;
     private final CrankPolicyBundle policy;
     private final AtomicLong pulseCounter = new AtomicLong(0L);
+
+    CrankOrchestrator(over_crank engine) {
+        this.engine = engine;
+        this.scheduler = new CrankSchedulerQueue();
+        this.budgetAllocator = new FrameBudgetAllocator();
+        this.weightTable = new InferenceWeightTable();
+        this.simulator = new BrowserLaneSimulator(0xC0FFEE42);
+        this.feeEstimator = new CrankFeeEstimator();
+        this.policy = CrankPolicyBundle.mainnetSafe();
+    }
+
+    void orchestratePulse(String tabId, int targetFps, double aiWeight, String originUrl) {
+        if (!policy.originAllowed(originUrl)) {
+            throw new OverCrank_OriginDeniedFault(originUrl);
+        }
+        if (pulseCounter.get() >= policy.getMaxConcurrentPulses()) {
+            scheduler.schedule(tabId, (int) (aiWeight * 10), over_crank.CRANK_COOLDOWN_MS);
+            return;
+        }
+        pulseCounter.incrementAndGet();
+        budgetAllocator.allocate(tabId, targetFps);
+        CrankPulseResult pulse = engine.emitCrankPulse(tabId, targetFps, aiWeight);
+        int micros = simulator.simulateFrameTimeMicros(targetFps, pulse.boostFactor());
+        engine.telemetry().recordGauge("frame_micros_" + tabId, micros);
+        engine.telemetry().recordGauge("fee_estimate", feeEstimator.estimatePulseFee(pulse.boostFactor(), over_crank.FEE_BASIS_POINTS).doubleValue());
+        engine.telemetry().recordGauge("weight_tier_" + weightTable.tierLabel(aiWeight).hashCode(), aiWeight);
+    }
+
+    void flushScheduled() {
+        for (ScheduledCrank sc : scheduler.drainReady()) {
+            engine.emitCrankPulse(sc.tabId(), over_crank.SUPER_PERF_TARGET_FPS, 0.5);
+            pulseCounter.decrementAndGet();
+        }
+    }
+
+    Map<String, Object> diagnostics() {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("pending_scheduled", scheduler.pending());
+        d.put("pulse_counter", pulseCounter.get());
+        d.put("budgets", budgetAllocator.snapshot());
+        d.put("tiers", weightTable.allTiers());
+        d.put("safe_mode", policy.isSafeMode());
+        return d;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JSON-ish deploy artifact builder
+// ---------------------------------------------------------------------------
+
+final class CrankDeployArtifact {
+
+    static String build(over_crank engine) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("contract", over_crank.ENGINE_LABEL);
+        root.put("release", over_crank.RELEASE_TAG);
+        root.put("chainId", engine.getRuntimeConfig().getChainId());
+        root.put("governor", over_crank.CRANK_GOVERNOR_HEX);
+        root.put("renderOracle", over_crank.RENDER_ORACLE_HEX);
+        root.put("tabVault", over_crank.TAB_VAULT_HEX);
+        root.put("workerRelay", over_crank.WORKER_RELAY_HEX);
+        root.put("attestationKeeper", over_crank.ATTESTATION_KEEPER_HEX);
