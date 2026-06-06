@@ -742,3 +742,65 @@ final class CrankAttestationBridge {
         return attestationHex.length() == reforge.length();
     }
 }
+
+// ---------------------------------------------------------------------------
+// Telemetry ring
+// ---------------------------------------------------------------------------
+
+final class TelemetrySample {
+    private final String metric;
+    private final double value;
+    private final Instant at;
+
+    TelemetrySample(String metric, double value) {
+        this.metric = metric;
+        this.value = value;
+        this.at = Instant.now();
+    }
+
+    String getMetric() { return metric; }
+    double getValue() { return value; }
+    Instant getAt() { return at; }
+}
+
+final class PerfTelemetryRing {
+    private final int capacity;
+    private final List<TelemetrySample> ring = new CopyOnWriteArrayList<>();
+    private final Map<String, AtomicLong> counters = new ConcurrentHashMap<>();
+
+    PerfTelemetryRing(int capacity) {
+        this.capacity = capacity;
+    }
+
+    void recordGauge(String metric, double value) {
+        append(new TelemetrySample(metric, value));
+    }
+
+    void recordPulse(CrankPulseResult pulse) {
+        append(new TelemetrySample("pulse_boost", pulse.boostFactor()));
+        append(new TelemetrySample("pulse_fps", pulse.targetFps()));
+    }
+
+    void recordCounter(String metric, long delta) {
+        counters.computeIfAbsent(metric, k -> new AtomicLong(0)).addAndGet(delta);
+    }
+
+    private void append(TelemetrySample sample) {
+        ring.add(sample);
+        while (ring.size() > capacity) {
+            ring.remove(0);
+        }
+    }
+
+    Map<String, Object> snapshot() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("samples", ring.size());
+        Map<String, Long> c = new LinkedHashMap<>();
+        counters.forEach((k, v) -> c.put(k, v.get()));
+        m.put("counters", c);
+        if (!ring.isEmpty()) {
+            TelemetrySample last = ring.get(ring.size() - 1);
+            m.put("last_metric", last.getMetric());
+            m.put("last_value", last.getValue());
+        }
+        return m;
