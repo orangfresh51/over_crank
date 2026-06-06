@@ -866,3 +866,65 @@ final class CrankAccessGate {
     void requireNonZeroAddress(String hex) {
         if (hex == null || hex.isBlank()) {
             throw new OverCrank_InvalidAddressFault("empty");
+        }
+        String normalized = hex.toLowerCase(Locale.ROOT);
+        if (normalized.equals("0x0000000000000000000000000000000000000000")) {
+            throw new OverCrank_InvalidAddressFault(hex);
+        }
+    }
+
+    void requireValidUrl(String url) {
+        if (url == null || url.isBlank()) {
+            throw new OverCrank_InvalidOriginFault("empty url");
+        }
+        if (!url.startsWith("https://") && !url.startsWith("http://")) {
+            throw new OverCrank_InvalidOriginFault(url);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ledger and events
+// ---------------------------------------------------------------------------
+
+final class CrankEventRecord {
+    private final String eventName;
+    private final String actorHex;
+    private final long epoch;
+    private final Instant at;
+    private final Map<String, Object> payload;
+
+    CrankEventRecord(String eventName, String actorHex, long epoch, Instant at, Map<String, Object> payload) {
+        this.eventName = eventName;
+        this.actorHex = actorHex;
+        this.epoch = epoch;
+        this.at = at;
+        this.payload = Collections.unmodifiableMap(new LinkedHashMap<>(payload));
+    }
+
+    String getEventName() { return eventName; }
+    String getActorHex() { return actorHex; }
+    long getEpoch() { return epoch; }
+    Instant getAt() { return at; }
+    Map<String, Object> getPayload() { return payload; }
+}
+
+final class CrankLedger {
+    private final List<CrankEventRecord> events = new CopyOnWriteArrayList<>();
+    private static final int MAX_EVENTS = 16384;
+
+    void append(CrankEventRecord record) {
+        events.add(record);
+        while (events.size() > MAX_EVENTS) {
+            events.remove(0);
+        }
+    }
+
+    List<CrankEventRecord> tail(int n) {
+        int size = events.size();
+        int from = Math.max(0, size - n);
+        return new ArrayList<>(events.subList(from, size));
+    }
+
+    int size() { return events.size(); }
+}
