@@ -1548,3 +1548,63 @@ final class CrankManifestValidator {
         for (String key : required) {
             if (!manifest.containsKey(key)) return false;
         }
+        Object gov = manifest.get("governor");
+        return gov instanceof String && CrankHexUtil.isValidEvmAddress((String) gov);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extended integration harness (callable from main extensions)
+// ---------------------------------------------------------------------------
+
+final class OverCrankIntegrationHarness {
+
+    static Map<String, Object> fullDiagnostics(over_crank engine) {
+        Map<String, Object> diag = new LinkedHashMap<>();
+        diag.put("engine", over_crank.ENGINE_LABEL);
+        diag.put("epoch", engine.currentCrankEpoch());
+        diag.put("tabs", engine.tabs().size());
+        diag.put("beams", engine.beams().snapshot().size());
+        diag.put("workers", engine.workers().snapshot().size());
+        diag.put("inference_slots", engine.inference().snapshot().size());
+        diag.put("telemetry", engine.telemetry().snapshot());
+        diag.put("ledger_tail", engine.ledger().tail(5).stream()
+                .map(CrankEventRecord::getEventName)
+                .collect(Collectors.toList()));
+        diag.put("deploy_json", CrankDeployArtifact.build(engine));
+        TabAnalyticsEngine analytics = new TabAnalyticsEngine();
+        for (TabShardRecord t : engine.tabs().snapshot()) {
+            analytics.record(t.getTabId(), t.getMeasuredFps(), engine.getLiveBoostFactor());
+        }
+        diag.put("analytics", analytics.export());
+        return diag;
+    }
+
+    static void extendedMain() {
+        over_crank engine = over_crank.bootstrapDefault();
+        engine.commitTabShard("tab-harness-0f3a", "https://render-lattice.example/harness", 4);
+        engine.commitTabShard("tab-harness-8b1c", "https://inference-crank.example/harness", 6);
+        CrankBatchRunner.runWarmup(engine, 24);
+        Map<String, Object> diag = fullDiagnostics(engine);
+        System.out.println("=== extended harness ===");
+        diag.forEach((k, v) -> System.out.println(k + ": " + v));
+        BoostCurveLut lut = new BoostCurveLut();
+        System.out.printf(Locale.US, "lut@0.5=%.4f%n", lut.sample(0.5));
+        WorkerHealthMonitor monitor = new WorkerHealthMonitor();
+        monitor.reportStall("wkr-1");
+        System.out.println("unhealthy: " + monitor.unhealthyWorkers(1));
+        EpochSnapshotStore store = new EpochSnapshotStore();
+        store.store(engine.currentCrankEpoch(), new byte[]{0x01, 0x02, 0x03});
+        System.out.println("snapshot: " + store.load(engine.currentCrankEpoch()).isPresent());
+        CrankManifestValidator validator = new CrankManifestValidator();
+        Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("contract", over_crank.ENGINE_LABEL);
+        manifest.put("chainId", 1L);
+        manifest.put("governor", over_crank.CRANK_GOVERNOR_HEX);
+        manifest.put("latticeDomain", over_crank.LATTICE_DOMAIN_HEX);
+        System.out.println("manifest ok: " + validator.validateDeployMap(manifest));
+        for (CrankLaneColor c : CrankLaneColor.values()) {
+            System.out.printf("lane %s mult=%.2f%n", c.name(), c.getPriorityMultiplier());
+        }
+    }
+}
