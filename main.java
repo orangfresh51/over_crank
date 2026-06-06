@@ -804,3 +804,65 @@ final class PerfTelemetryRing {
             m.put("last_value", last.getValue());
         }
         return m;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Super performance scorer
+// ---------------------------------------------------------------------------
+
+final class SuperPerfScorer {
+    private final Map<String, List<Integer>> fpsHistory = new ConcurrentHashMap<>();
+
+    double computeBoost(int targetFps, int measuredFps, double aiWeight) {
+        if (measuredFps <= 0) measuredFps = MIN_ACCEPTABLE_FPS;
+        double gap = (double) targetFps / measuredFps;
+        double aiLift = 1.0 + (aiWeight * 0.62);
+        return Math.max(1.0, Math.min(gap * aiLift, over_crank.CRANK_BOOST_CEILING));
+    }
+
+    void ingestSample(String tabId, int fps) {
+        fpsHistory.compute(tabId, (k, v) -> {
+            List<Integer> list = v == null ? new ArrayList<>() : v;
+            list.add(fps);
+            if (list.size() > 64) list.remove(0);
+            return list;
+        });
+    }
+
+    OptionalDouble rollingMedian(String tabId) {
+        List<Integer> list = fpsHistory.get(tabId);
+        if (list == null || list.isEmpty()) return OptionalDouble.empty();
+        List<Integer> sorted = new ArrayList<>(list);
+        Collections.sort(sorted);
+        int mid = sorted.size() / 2;
+        if (sorted.size() % 2 == 0) {
+            return OptionalDouble.of((sorted.get(mid - 1) + sorted.get(mid)) / 2.0);
+        }
+        return OptionalDouble.of(sorted.get(mid));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Access gate
+// ---------------------------------------------------------------------------
+
+final class CrankAccessGate {
+
+    void requireGovernor(String actor, String governor) {
+        requireNonZeroAddress(actor);
+        if (!actor.equalsIgnoreCase(governor)) {
+            throw new OverCrank_UnauthorizedGovernorFault(actor);
+        }
+    }
+
+    void requireOracle(String actor, String oracle) {
+        requireNonZeroAddress(actor);
+        if (!actor.equalsIgnoreCase(oracle)) {
+            throw new OverCrank_UnauthorizedOracleFault(actor);
+        }
+    }
+
+    void requireNonZeroAddress(String hex) {
+        if (hex == null || hex.isBlank()) {
+            throw new OverCrank_InvalidAddressFault("empty");
