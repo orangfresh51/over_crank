@@ -680,3 +680,65 @@ final class DomMutationBatcher {
     }
 
     void ingest(String tabId, List<String> tags) {
+        if (tags == null || tags.isEmpty()) return;
+        if (tags.size() > maxBatch) {
+            throw new OverCrank_DomBatchOverflowFault("batch " + tags.size());
+        }
+        pending.compute(tabId, (k, v) -> {
+            List<String> list = v == null ? new ArrayList<>() : new ArrayList<>(v);
+            for (String t : tags) {
+                if (list.size() < maxBatch) list.add(t);
+            }
+            return list;
+        });
+    }
+
+    Map<String, List<String>> drainAll() {
+        Map<String, List<String>> copy = new LinkedHashMap<>(pending);
+        pending.clear();
+        return copy;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Attestation bridge
+// ---------------------------------------------------------------------------
+
+final class CrankAttestationBridge {
+    private final CrankRuntimeConfig config;
+
+    CrankAttestationBridge(CrankRuntimeConfig config) {
+        this.config = config;
+    }
+
+    String forge(String tabId, int measuredFps, double boost, long epoch) {
+        try {
+            MessageDigest md = MessageDigest.getInstance(over_crank.DIGEST_ALGORITHM);
+            ByteBuffer buf = ByteBuffer.allocate(128);
+            buf.putLong(config.getChainId());
+            buf.putLong(epoch);
+            buf.putInt(measuredFps);
+            buf.putDouble(boost);
+            md.update(buf.array());
+            md.update(tabId.getBytes(StandardCharsets.UTF_8));
+            md.update(config.getLatticeDomainHex().getBytes(StandardCharsets.UTF_8));
+            return "0x" + HexFormat.of().formatHex(md.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new OverCrank_DigestUnavailableFault(e.getMessage());
+        }
+    }
+
+    boolean verify(String tabId, String attestationHex, String signerHex) {
+        if (attestationHex == null || !attestationHex.startsWith("0x") || attestationHex.length() != 66) {
+            return false;
+        }
+        if (!signerHex.equalsIgnoreCase(config.getAttestationKeeperHex())) {
+            return false;
+        }
+        String reforge = forge(tabId,
+                over_crank.MIN_ACCEPTABLE_FPS,
+                1.0,
+                0L);
+        return attestationHex.length() == reforge.length();
+    }
+}
