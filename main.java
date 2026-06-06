@@ -1486,3 +1486,65 @@ final class EpochSnapshotStore {
 // Lane color palette for render prioritization
 // ---------------------------------------------------------------------------
 
+enum CrankLaneColor {
+    OBSIDIAN(0, 1.00),
+    COPPER(1, 1.08),
+    AURORA(2, 1.15),
+    VERMILLION(3, 1.22),
+    CERULEAN(4, 1.18),
+    IVORY(5, 1.05);
+
+    private final int index;
+    private final double priorityMultiplier;
+
+    CrankLaneColor(int index, double priorityMultiplier) {
+        this.index = index;
+        this.priorityMultiplier = priorityMultiplier;
+    }
+
+    int getIndex() { return index; }
+    double getPriorityMultiplier() { return priorityMultiplier; }
+
+    static CrankLaneColor fromTier(int tier) {
+        return values()[Math.floorMod(tier, values().length)];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Boost curve LUT
+// ---------------------------------------------------------------------------
+
+final class BoostCurveLut {
+    private final double[] curve;
+
+    BoostCurveLut() {
+        curve = new double[64];
+        for (int i = 0; i < curve.length; i++) {
+            double t = i / (double) (curve.length - 1);
+            curve[i] = 1.0 + Math.sin(t * Math.PI) * (over_crank.CRANK_BOOST_CEILING - 1.0);
+        }
+    }
+
+    double sample(double normalized) {
+        if (normalized <= 0) return curve[0];
+        if (normalized >= 1) return curve[curve.length - 1];
+        double pos = normalized * (curve.length - 1);
+        int idx = (int) pos;
+        double frac = pos - idx;
+        if (idx >= curve.length - 1) return curve[curve.length - 1];
+        return curve[idx] * (1 - frac) + curve[idx + 1] * frac;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Crank manifest validator
+// ---------------------------------------------------------------------------
+
+final class CrankManifestValidator {
+
+    boolean validateDeployMap(Map<String, Object> manifest) {
+        if (manifest == null || manifest.isEmpty()) return false;
+        String[] required = {"contract", "chainId", "governor", "latticeDomain"};
+        for (String key : required) {
+            if (!manifest.containsKey(key)) return false;
+        }
