@@ -494,3 +494,65 @@ final class RenderBeamRecord {
     private final int targetFps;
     private final double boostFactor;
     private final Instant createdAt;
+    private volatile boolean anchored;
+
+    RenderBeamRecord(String beamId, String tabId, String beamTag, int targetFps, double boostFactor) {
+        this.beamId = beamId;
+        this.tabId = tabId;
+        this.beamTag = beamTag;
+        this.targetFps = targetFps;
+        this.boostFactor = boostFactor;
+        this.createdAt = Instant.now();
+        this.anchored = false;
+    }
+
+    String getBeamId() { return beamId; }
+    String getTabId() { return tabId; }
+    String getBeamTag() { return beamTag; }
+    int getTargetFps() { return targetFps; }
+    double getBoostFactor() { return boostFactor; }
+    Instant getCreatedAt() { return createdAt; }
+    boolean isAnchored() { return anchored; }
+    void setAnchored(boolean v) { this.anchored = v; }
+}
+
+final class RenderBeamLattice {
+    private final int maxBeams;
+    private final Map<String, RenderBeamRecord> beams = new ConcurrentHashMap<>();
+    private final AtomicLong beamSequence = new AtomicLong(0L);
+
+    RenderBeamLattice(int maxBeams) {
+        this.maxBeams = maxBeams;
+    }
+
+    RenderBeamRecord allocateBeam(String tabId, int targetFps, double boost) {
+        if (beams.size() >= maxBeams) {
+            evictOldestUnanchored();
+        }
+        long seq = beamSequence.incrementAndGet();
+        String beamId = "beam-" + seq + "-" + Integer.toHexString((int) (seq * 37 % 0xFFFF));
+        String beamTag = "velvet-" + tabId.hashCode() + "-" + seq;
+        RenderBeamRecord record = new RenderBeamRecord(beamId, tabId, beamTag, targetFps, boost);
+        beams.put(beamId, record);
+        return record;
+    }
+
+    RenderBeamRecord requireBeam(String beamId) {
+        RenderBeamRecord r = beams.get(beamId);
+        if (r == null) {
+            throw new OverCrank_BeamNotFoundFault(beamId);
+        }
+        return r;
+    }
+
+    void anchorBeam(String beamId) {
+        requireBeam(beamId).setAnchored(true);
+    }
+
+    private void evictOldestUnanchored() {
+        Optional<RenderBeamRecord> oldest = beams.values().stream()
+                .filter(b -> !b.isAnchored())
+                .min(Comparator.comparing(RenderBeamRecord::getCreatedAt));
+        oldest.ifPresent(b -> beams.remove(b.getBeamId()));
+    }
+
