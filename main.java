@@ -990,3 +990,65 @@ final class CrankSchedulerQueue {
     void schedule(String tabId, int priority, int delayMs) {
         queue.offer(new ScheduledCrank(tabId, priority, Instant.now().plusMillis(delayMs)));
     }
+
+    List<ScheduledCrank> drainReady() {
+        List<ScheduledCrank> ready = new ArrayList<>();
+        Instant now = Instant.now();
+        while (!queue.isEmpty() && !queue.peek().executeAt().isAfter(now)) {
+            ready.add(queue.poll());
+        }
+        return ready;
+    }
+
+    int pending() { return queue.size(); }
+}
+
+record ScheduledCrank(String tabId, int priority, Instant executeAt) {}
+
+// ---------------------------------------------------------------------------
+// Frame budget allocator
+// ---------------------------------------------------------------------------
+
+final class FrameBudgetAllocator {
+    private final Map<String, Long> budgetsNanos = new ConcurrentHashMap<>();
+    private static final long DEFAULT_BUDGET_NS = 6_944_444L;
+
+    void allocate(String tabId, int targetFps) {
+        long budget = 1_000_000_000L / Math.max(1, targetFps);
+        budgetsNanos.put(tabId, budget);
+    }
+
+    long budgetFor(String tabId) {
+        return budgetsNanos.getOrDefault(tabId, DEFAULT_BUDGET_NS);
+    }
+
+    Map<String, Long> snapshot() {
+        return new LinkedHashMap<>(budgetsNanos);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AI inference weight table
+// ---------------------------------------------------------------------------
+
+final class InferenceWeightTable {
+    private final TreeMap<Double, String> tiers = new TreeMap<>();
+
+    InferenceWeightTable() {
+        tiers.put(0.10, "whisper");
+        tiers.put(0.25, "glide");
+        tiers.put(0.45, "surge");
+        tiers.put(0.65, "overdrive");
+        tiers.put(0.85, "velvet-max");
+    }
+
+    String tierLabel(double weight) {
+        Map.Entry<Double, String> e = tiers.floorEntry(weight);
+        return e != null ? e.getValue() : "baseline";
+    }
+
+    Set<String> allTiers() {
+        return new LinkedHashSet<>(tiers.values());
+    }
+}
+
