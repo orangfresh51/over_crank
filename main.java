@@ -618,3 +618,65 @@ final class WorkerCrankPool {
 // ---------------------------------------------------------------------------
 
 final class InferenceSlot {
+    private final String slotId;
+    private final String tabId;
+    private final double aiWeight;
+    private final Instant routedAt;
+
+    InferenceSlot(String slotId, String tabId, double aiWeight) {
+        this.slotId = slotId;
+        this.tabId = tabId;
+        this.aiWeight = aiWeight;
+        this.routedAt = Instant.now();
+    }
+
+    String getSlotId() { return slotId; }
+    String getTabId() { return tabId; }
+    double getAiWeight() { return aiWeight; }
+    Instant getRoutedAt() { return routedAt; }
+}
+
+final class InferenceCrankRouter {
+    private final int maxSlots;
+    private final Map<String, InferenceSlot> slots = new ConcurrentHashMap<>();
+    private final AtomicLong slotSeq = new AtomicLong(0L);
+
+    InferenceCrankRouter(int maxSlots) {
+        this.maxSlots = maxSlots;
+    }
+
+    void routeSlot(String tabId, double aiWeight) {
+        if (slots.size() >= maxSlots) {
+            pruneStaleSlots();
+        }
+        long seq = slotSeq.incrementAndGet();
+        String slotId = "inf-" + seq;
+        slots.put(slotId, new InferenceSlot(slotId, tabId, aiWeight));
+    }
+
+    private void pruneStaleSlots() {
+        Instant cutoff = Instant.now().minus(Duration.ofMinutes(30));
+        slots.entrySet().removeIf(e -> e.getValue().getRoutedAt().isBefore(cutoff));
+        if (slots.size() >= maxSlots && !slots.isEmpty()) {
+            slots.remove(slots.keySet().iterator().next());
+        }
+    }
+
+    List<InferenceSlot> snapshot() {
+        return new ArrayList<>(slots.values());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DOM mutation batcher
+// ---------------------------------------------------------------------------
+
+final class DomMutationBatcher {
+    private final int maxBatch;
+    private final Map<String, List<String>> pending = new ConcurrentHashMap<>();
+
+    DomMutationBatcher(int maxBatch) {
+        this.maxBatch = maxBatch;
+    }
+
+    void ingest(String tabId, List<String> tags) {
