@@ -1362,3 +1362,65 @@ final class OverCrank_TabShardDuplicateFault extends OverCrank_Fault {
 }
 
 final class OverCrank_TabSaturationFault extends OverCrank_Fault {
+    OverCrank_TabSaturationFault(String msg) { super(msg); }
+}
+
+final class OverCrank_TabShardMissingFault extends OverCrank_Fault {
+    OverCrank_TabShardMissingFault(String tab) { super("missing tab " + tab); }
+}
+
+final class OverCrank_BeamNotFoundFault extends OverCrank_Fault {
+    OverCrank_BeamNotFoundFault(String beam) { super("beam not found " + beam); }
+}
+
+final class OverCrank_DomBatchOverflowFault extends OverCrank_Fault {
+    OverCrank_DomBatchOverflowFault(String msg) { super(msg); }
+}
+
+final class OverCrank_UnauthorizedGovernorFault extends OverCrank_Fault {
+    OverCrank_UnauthorizedGovernorFault(String actor) { super("governor denied " + actor); }
+}
+
+final class OverCrank_UnauthorizedOracleFault extends OverCrank_Fault {
+    OverCrank_UnauthorizedOracleFault(String actor) { super("oracle denied " + actor); }
+}
+
+final class OverCrank_InvalidAddressFault extends OverCrank_Fault {
+    OverCrank_InvalidAddressFault(String hex) { super("invalid address " + hex); }
+}
+
+final class OverCrank_InvalidOriginFault extends OverCrank_Fault {
+    OverCrank_InvalidOriginFault(String url) { super("invalid origin " + url); }
+}
+
+final class OverCrank_OriginDeniedFault extends OverCrank_Fault {
+    OverCrank_OriginDeniedFault(String url) { super("origin denied " + url); }
+}
+
+final class OverCrank_RenderCrankOverrunFault extends OverCrank_Fault {
+    OverCrank_RenderCrankOverrunFault(String msg) { super(msg); }
+}
+
+final class OverCrank_LatticeMismatchFault extends OverCrank_Fault {
+    OverCrank_LatticeMismatchFault(String msg) { super(msg); }
+}
+
+// ---------------------------------------------------------------------------
+// Supplementary tab analytics
+// ---------------------------------------------------------------------------
+
+final class TabAnalyticsEngine {
+    private final Map<String, double[]> rollingStats = new ConcurrentHashMap<>();
+
+    void record(String tabId, double fps, double boost) {
+        rollingStats.compute(tabId, (k, v) -> {
+            double[] arr = v == null ? new double[4] : v;
+            arr[0] = arr[0] == 0 ? fps : (arr[0] * 0.9 + fps * 0.1);
+            arr[1] = Math.max(arr[1], fps);
+            arr[2] = arr[2] == 0 ? boost : (arr[2] * 0.85 + boost * 0.15);
+            arr[3] += 1;
+            return arr;
+        });
+    }
+
+    Map<String, Map<String, Double>> export() {
