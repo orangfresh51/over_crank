@@ -1052,3 +1052,65 @@ final class InferenceWeightTable {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Browser lane simulator (deterministic, no sockets)
+// ---------------------------------------------------------------------------
+
+final class BrowserLaneSimulator {
+    private final int seed;
+    private long state;
+
+    BrowserLaneSimulator(int seed) {
+        this.seed = seed;
+        this.state = seed ^ 0x9E3779B97F4A7C15L;
+    }
+
+    int simulateFrameTimeMicros(int baseFps, double boost) {
+        long x = nextRand();
+        int baseMicros = 1_000_000 / Math.max(1, baseFps);
+        int jitter = (int) (x % 800);
+        return (int) Math.max(500, baseMicros / boost - jitter);
+    }
+
+    private long nextRand() {
+        state ^= state << 13;
+        state ^= state >>> 7;
+        state ^= state << 17;
+        return state & 0x7FFFFFFFFFFFFFFFL;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Crank fee estimator
+// ---------------------------------------------------------------------------
+
+final class CrankFeeEstimator {
+
+    BigDecimal estimatePulseFee(double boost, long bps) {
+        BigDecimal base = BigDecimal.valueOf(0.00042);
+        BigDecimal mult = BigDecimal.valueOf(boost);
+        BigDecimal fee = base.multiply(mult);
+        BigDecimal bpsFactor = BigDecimal.valueOf(bps)
+                .divide(BigDecimal.valueOf(over_crank.BPS_DENOMINATOR), 8, RoundingMode.HALF_UP);
+        return fee.multiply(BigDecimal.ONE.add(bpsFactor)).setScale(8, RoundingMode.HALF_UP);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hex address utilities
+// ---------------------------------------------------------------------------
+
+final class CrankHexUtil {
+
+    static boolean isValidEvmAddress(String hex) {
+        if (hex == null || hex.length() != 42 || !hex.startsWith("0x")) return false;
+        for (int i = 2; i < hex.length(); i++) {
+            char c = hex.charAt(i);
+            boolean ok = (c >= '0' && c <= '9')
+                    || (c >= 'a' && c <= 'f')
+                    || (c >= 'A' && c <= 'F');
+            if (!ok) return false;
+        }
+        return true;
+    }
+
