@@ -928,3 +928,65 @@ final class CrankLedger {
 
     int size() { return events.size(); }
 }
+
+// ---------------------------------------------------------------------------
+// Report composer
+// ---------------------------------------------------------------------------
+
+final class CrankReportComposer {
+    private static final DateTimeFormatter FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
+
+    String compose(
+            over_crank engine,
+            long epoch,
+            List<TabShardRecord> tabs,
+            List<RenderBeamRecord> beams,
+            Map<String, Object> telemetry
+    ) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        pw.println("=== over_crank status ===");
+        pw.println("release: " + engine.getRuntimeConfig().getReleaseTag());
+        pw.println("epoch: " + epoch);
+        pw.println("boost: " + String.format(Locale.US, "%.3f", engine.getLiveBoostFactor()));
+        pw.println("boot: " + FMT.format(engine.getBootInstant()));
+        pw.println("tabs: " + tabs.size());
+        for (TabShardRecord t : tabs) {
+            pw.printf("  %s tier=%d fps=%d url=%s%n",
+                    t.getTabId(), t.getPriorityTier(), t.getMeasuredFps(), t.getOriginUrl());
+        }
+        pw.println("beams: " + beams.size() + " anchored=" +
+                beams.stream().filter(RenderBeamRecord::isAnchored).count());
+        pw.println("telemetry: " + telemetry);
+        pw.println("ledger events: " + engine.ledger().size());
+        pw.println("chain: " + engine.getRuntimeConfig().getChainId());
+        pw.flush();
+        return sw.toString();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Result types
+// ---------------------------------------------------------------------------
+
+record CrankPulseResult(
+        String tabId,
+        String beamId,
+        double boostFactor,
+        int targetFps,
+        long epoch,
+        String digestHex
+) {}
+
+// ---------------------------------------------------------------------------
+// Crank scheduler (priority queue for deferred pulses)
+// ---------------------------------------------------------------------------
+
+final class CrankSchedulerQueue {
+    private final PriorityQueue<ScheduledCrank> queue =
+            new PriorityQueue<>(Comparator.comparingInt(ScheduledCrank::priority).reversed());
+
+    void schedule(String tabId, int priority, int delayMs) {
+        queue.offer(new ScheduledCrank(tabId, priority, Instant.now().plusMillis(delayMs)));
+    }
