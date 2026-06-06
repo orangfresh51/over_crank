@@ -556,3 +556,65 @@ final class RenderBeamLattice {
         oldest.ifPresent(b -> beams.remove(b.getBeamId()));
     }
 
+    List<RenderBeamRecord> snapshot() {
+        return new ArrayList<>(beams.values());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Worker crank pool
+// ---------------------------------------------------------------------------
+
+final class WorkerCrankAssignment {
+    private final String workerId;
+    private final String beamId;
+    private final double boostFactor;
+    private final Instant assignedAt;
+
+    WorkerCrankAssignment(String workerId, String beamId, double boostFactor) {
+        this.workerId = workerId;
+        this.beamId = beamId;
+        this.boostFactor = boostFactor;
+        this.assignedAt = Instant.now();
+    }
+
+    String getWorkerId() { return workerId; }
+    String getBeamId() { return beamId; }
+    double getBoostFactor() { return boostFactor; }
+    Instant getAssignedAt() { return assignedAt; }
+}
+
+final class WorkerCrankPool {
+    private final int maxWorkers;
+    private final Map<String, WorkerCrankAssignment> assignments = new ConcurrentHashMap<>();
+    private final AtomicLong workerSeq = new AtomicLong(0L);
+
+    WorkerCrankPool(int maxWorkers) {
+        this.maxWorkers = maxWorkers;
+    }
+
+    void assignCrank(String beamId, double boost) {
+        if (assignments.size() >= maxWorkers) {
+            recycleIdleWorker();
+        }
+        long id = workerSeq.incrementAndGet();
+        String workerId = "wkr-" + id;
+        assignments.put(workerId, new WorkerCrankAssignment(workerId, beamId, boost));
+    }
+
+    private void recycleIdleWorker() {
+        if (assignments.isEmpty()) return;
+        String first = assignments.keySet().iterator().next();
+        assignments.remove(first);
+    }
+
+    List<WorkerCrankAssignment> snapshot() {
+        return new ArrayList<>(assignments.values());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Inference crank router
+// ---------------------------------------------------------------------------
+
+final class InferenceSlot {
