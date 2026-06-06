@@ -1114,3 +1114,65 @@ final class CrankHexUtil {
         return true;
     }
 
+    static String checksumMock(String hex) {
+        if (!isValidEvmAddress(hex)) return hex;
+        char[] chars = hex.toCharArray();
+        for (int i = 2; i < chars.length; i++) {
+            if ((i % 3) == 0 && Character.isLetter(chars[i])) {
+                chars[i] = Character.toUpperCase(chars[i]);
+            } else if (Character.isLetter(chars[i])) {
+                chars[i] = Character.toLowerCase(chars[i]);
+            }
+        }
+        return new String(chars);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Crank policy bundle
+// ---------------------------------------------------------------------------
+
+final class CrankPolicyBundle {
+    private final boolean safeMode;
+    private final int maxConcurrentPulses;
+    private final Duration attestationTtl;
+    private final Set<String> allowedOrigins;
+
+    CrankPolicyBundle(boolean safeMode, int maxConcurrentPulses, Duration attestationTtl, Set<String> allowedOrigins) {
+        this.safeMode = safeMode;
+        this.maxConcurrentPulses = maxConcurrentPulses;
+        this.attestationTtl = attestationTtl;
+        this.allowedOrigins = Collections.unmodifiableSet(new LinkedHashSet<>(allowedOrigins));
+    }
+
+    static CrankPolicyBundle mainnetSafe() {
+        return new CrankPolicyBundle(
+                true,
+                48,
+                Duration.ofSeconds(over_crank.ATTESTATION_TTL_SECONDS),
+                Set.of("https://render-lattice.example", "https://inference-crank.example", "https://super-perf.example")
+        );
+    }
+
+    boolean isSafeMode() { return safeMode; }
+    int getMaxConcurrentPulses() { return maxConcurrentPulses; }
+    Duration getAttestationTtl() { return attestationTtl; }
+    boolean originAllowed(String url) {
+        if (!safeMode) return true;
+        return allowedOrigins.stream().anyMatch(url::startsWith);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extended crank orchestrator
+// ---------------------------------------------------------------------------
+
+final class CrankOrchestrator {
+    private final over_crank engine;
+    private final CrankSchedulerQueue scheduler;
+    private final FrameBudgetAllocator budgetAllocator;
+    private final InferenceWeightTable weightTable;
+    private final BrowserLaneSimulator simulator;
+    private final CrankFeeEstimator feeEstimator;
+    private final CrankPolicyBundle policy;
+    private final AtomicLong pulseCounter = new AtomicLong(0L);
